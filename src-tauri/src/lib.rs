@@ -154,7 +154,7 @@ pub fn run() {
         .manage(state)
         .plugin(tauri_plugin_opener::init())
         .plugin(
-            tauri_plugin_global_shortcut::Builder::with_handler(|app: &tauri::AppHandle, _shortcut: &tauri_plugin_global_shortcut::Shortcut, event: &tauri_plugin_global_shortcut::GlobalShortcutEvent| {
+            tauri_plugin_global_shortcut::Builder::with_handler(|app: &tauri::AppHandle, _shortcut: &tauri_plugin_global_shortcut::Shortcut, event: &tauri_plugin_global_shortcut::ShortcutEvent| {
                 if event.state() == tauri_plugin_global_shortcut::ShortcutState::Pressed {
                     // 快捷键触发，切换状态
                     let clicker = app.state::<ClickerState>();
