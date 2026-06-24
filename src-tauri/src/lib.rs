@@ -1,12 +1,9 @@
-// Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
+// Tauri 连点器核心逻辑 - 仅支持 Windows 平台
 use std::sync::{Arc, Mutex};
 use std::sync::atomic::{AtomicBool, AtomicU64, AtomicU8, Ordering};
 use tauri::{AppHandle, State, Emitter, Manager};
-use windows_sys::Win32::UI::Input::KeyboardAndMouse::{
-    SendInput, INPUT, INPUT_MOUSE, MOUSEEVENTF_LEFTDOWN, MOUSEEVENTF_LEFTUP,
-    MOUSEEVENTF_RIGHTDOWN, MOUSEEVENTF_RIGHTUP, MOUSEEVENTF_MIDDLEDOWN, MOUSEEVENTF_MIDDLEUP,
-    MOUSEINPUT,
-};
+
+// ===== 数据结构 =====
 
 pub struct ClickerState {
     pub is_running: Arc<AtomicBool>,
@@ -16,45 +13,69 @@ pub struct ClickerState {
     pub current_hotkey: Mutex<String>,
 }
 
-fn send_click(button: u8, is_down: bool) {
-    unsafe {
-        let mut input: INPUT = std::mem::zeroed();
-        input.r#type = INPUT_MOUSE;
-        
+// ===== Windows 专有鼠标模拟实现 =====
+
+#[cfg(target_os = "windows")]
+mod mouse_impl {
+    use windows_sys::Win32::UI::Input::KeyboardAndMouse::{
+        SendInput, INPUT, INPUT_0, INPUT_MOUSE,
+        MOUSEEVENTF_LEFTDOWN, MOUSEEVENTF_LEFTUP,
+        MOUSEEVENTF_RIGHTDOWN, MOUSEEVENTF_RIGHTUP,
+        MOUSEEVENTF_MIDDLEDOWN, MOUSEEVENTF_MIDDLEUP,
+        MOUSEINPUT,
+    };
+
+    pub fn send_click(button: u8, is_down: bool) {
         let flag = match (button, is_down) {
-            (0, true) => MOUSEEVENTF_LEFTDOWN,
+            (0, true)  => MOUSEEVENTF_LEFTDOWN,
             (0, false) => MOUSEEVENTF_LEFTUP,
-            (1, true) => MOUSEEVENTF_RIGHTDOWN,
+            (1, true)  => MOUSEEVENTF_RIGHTDOWN,
             (1, false) => MOUSEEVENTF_RIGHTUP,
-            (2, true) => MOUSEEVENTF_MIDDLEDOWN,
+            (2, true)  => MOUSEEVENTF_MIDDLEDOWN,
             (2, false) => MOUSEEVENTF_MIDDLEUP,
-            _ => MOUSEEVENTF_LEFTDOWN,
+            _          => MOUSEEVENTF_LEFTDOWN,
         };
 
-        input.Anonymous.mi = MOUSEINPUT {
-            dx: 0,
-            dy: 0,
-            mouseData: 0,
-            dwFlags: flag,
-            time: 0,
-            dwExtraInfo: 0,
+        let input = INPUT {
+            r#type: INPUT_MOUSE,
+            Anonymous: INPUT_0 {
+                mi: MOUSEINPUT {
+                    dx: 0,
+                    dy: 0,
+                    mouseData: 0,
+                    dwFlags: flag,
+                    time: 0,
+                    dwExtraInfo: 0,
+                },
+            },
         };
 
-        SendInput(1, &mut input, std::mem::size_of::<INPUT>() as i32);
+        unsafe {
+            SendInput(1, &input as *const INPUT, std::mem::size_of::<INPUT>() as i32);
+        }
+    }
+
+    pub fn click_once(button: u8) {
+        send_click(button, true);
+        std::thread::sleep(std::time::Duration::from_millis(5));
+        send_click(button, false);
+    }
+
+    pub fn click_double(button: u8) {
+        click_once(button);
+        std::thread::sleep(std::time::Duration::from_millis(30));
+        click_once(button);
     }
 }
 
-fn click_once(button: u8) {
-    send_click(button, true);
-    std::thread::sleep(std::time::Duration::from_millis(5));
-    send_click(button, false);
+// 非 Windows 平台空实现（仅为通过编译检查）
+#[cfg(not(target_os = "windows"))]
+mod mouse_impl {
+    pub fn click_once(_button: u8) {}
+    pub fn click_double(_button: u8) {}
 }
 
-fn click_double(button: u8) {
-    click_once(button);
-    std::thread::sleep(std::time::Duration::from_millis(30));
-    click_once(button);
-}
+// ===== Tauri Commands =====
 
 #[tauri::command]
 fn start_clicker(app: AppHandle, state: State<'_, ClickerState>) {
@@ -86,12 +107,16 @@ fn get_status(state: State<'_, ClickerState>) -> bool {
 }
 
 #[tauri::command]
-fn register_hotkey(app: AppHandle, state: State<'_, ClickerState>, hotkey: String) -> Result<(), String> {
+fn register_hotkey(
+    app: AppHandle,
+    state: State<'_, ClickerState>,
+    hotkey: String,
+) -> Result<(), String> {
     use tauri_plugin_global_shortcut::GlobalShortcutExt;
 
     let shortcut_manager = app.global_shortcut();
-    
-    // 获取锁，并注销旧的快捷键
+
+    // 注销旧快捷键（忽略错误，例如第一次还没注册时）
     let mut current = state.current_hotkey.lock().unwrap();
     let _ = shortcut_manager.unregister(current.as_str());
 
@@ -106,46 +131,45 @@ fn register_hotkey(app: AppHandle, state: State<'_, ClickerState>, hotkey: Strin
     Ok(())
 }
 
+// ===== 主入口 =====
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let is_running = Arc::new(AtomicBool::new(false));
     let interval_ms = Arc::new(AtomicU64::new(100)); // 默认 100ms
-    let button = Arc::new(AtomicU8::new(0)); // 默认左键
-    let click_type = Arc::new(AtomicU8::new(0)); // 默认单击
-    let current_hotkey = Mutex::new("F8".to_string());
+    let button = Arc::new(AtomicU8::new(0));         // 默认左键
+    let click_type = Arc::new(AtomicU8::new(0));     // 默认单击
 
     let state = ClickerState {
         is_running: is_running.clone(),
         interval_ms: interval_ms.clone(),
         button: button.clone(),
         click_type: click_type.clone(),
-        current_hotkey,
+        current_hotkey: Mutex::new("F8".to_string()),
     };
 
-    // 启动连点后台线程
+    // 启动后台连点线程
     {
         let is_running = is_running.clone();
         let interval_ms = interval_ms.clone();
         let button = button.clone();
         let click_type = click_type.clone();
 
-        std::thread::spawn(move || {
-            loop {
-                if is_running.load(Ordering::SeqCst) {
-                    let btn = button.load(Ordering::SeqCst);
-                    let typ = click_type.load(Ordering::SeqCst);
-                    
-                    if typ == 0 {
-                        click_once(btn);
-                    } else {
-                        click_double(btn);
-                    }
+        std::thread::spawn(move || loop {
+            if is_running.load(Ordering::SeqCst) {
+                let btn = button.load(Ordering::SeqCst);
+                let typ = click_type.load(Ordering::SeqCst);
 
-                    let sleep_time = interval_ms.load(Ordering::SeqCst);
-                    std::thread::sleep(std::time::Duration::from_millis(sleep_time));
+                if typ == 0 {
+                    mouse_impl::click_once(btn);
                 } else {
-                    std::thread::sleep(std::time::Duration::from_millis(50));
+                    mouse_impl::click_double(btn);
                 }
+
+                let ms = interval_ms.load(Ordering::SeqCst);
+                std::thread::sleep(std::time::Duration::from_millis(ms));
+            } else {
+                std::thread::sleep(std::time::Duration::from_millis(50));
             }
         });
     }
@@ -154,22 +178,22 @@ pub fn run() {
         .manage(state)
         .plugin(tauri_plugin_opener::init())
         .plugin(
-            tauri_plugin_global_shortcut::Builder::with_handler(|app: &tauri::AppHandle, _shortcut: &tauri_plugin_global_shortcut::Shortcut, event: &tauri_plugin_global_shortcut::ShortcutEvent| {
-                if event.state() == tauri_plugin_global_shortcut::ShortcutState::Pressed {
-                    // 快捷键触发，切换状态
-                    let clicker = app.state::<ClickerState>();
-                    let current_running = clicker.is_running.load(Ordering::SeqCst);
-                    let new_running = !current_running;
-                    clicker.is_running.store(new_running, Ordering::SeqCst);
-                    
-                    let _ = app.emit("clicker-status-changed", new_running);
-                }
-            })
-            .build()
+            tauri_plugin_global_shortcut::Builder::new()
+                .with_handler(|app, _shortcut, event| {
+                    use tauri_plugin_global_shortcut::ShortcutState;
+                    if event.state() == ShortcutState::Pressed {
+                        let clicker = app.state::<ClickerState>();
+                        let current = clicker.is_running.load(Ordering::SeqCst);
+                        let next = !current;
+                        clicker.is_running.store(next, Ordering::SeqCst);
+                        let _ = app.emit("clicker-status-changed", next);
+                    }
+                })
+                .build(),
         )
         .setup(|app| {
             use tauri_plugin_global_shortcut::GlobalShortcutExt;
-            // 默认注册 F8 快捷键
+            // 启动时注册默认 F8 全局快捷键
             let _ = app.global_shortcut().register("F8");
             Ok(())
         })
@@ -183,4 +207,3 @@ pub fn run() {
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
-

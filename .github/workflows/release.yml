@@ -10,12 +10,7 @@ jobs:
   release:
     permissions:
       contents: write
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - platform: 'windows-latest'
-    runs-on: ${{ matrix.platform }}
+    runs-on: windows-latest
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -28,6 +23,8 @@ jobs:
 
       - name: Install Rust stable
         uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-pc-windows-msvc
 
       - name: Install npm dependencies
         run: npm install
@@ -42,3 +39,5 @@ jobs:
           releaseBody: '编译完成！请在下方 Assets 中下载您的 Windows 安装包 (.exe) 或绿色版 (.zip)。'
           releaseDraft: false
           prerelease: false
+          args: --target x86_64-pc-windows-msvc
+
