@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="stylesheet" href="styles.css" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Thunder Clicker</title>
+    <script type="module" src="/main.js" defer></script>
+  </head>
+
+  <body>
+    <div class="app-container" id="app">
+      <!-- 头部 -->
+      <div class="header">
+        <div class="title-section">
+          <h1>雷霆连点器</h1>
+          <p>Thunder Clicker v2.0</p>
+        </div>
+        <div class="status-badge" id="status-badge">
+          <div class="status-dot"></div>
+          <span id="status-text">未激活</span>
+        </div>
+      </div>
+
+      <!-- 连点时间间隔设置 -->
+      <div class="config-group">
+        <label class="config-label">连点时间间隔</label>
+        <div class="time-inputs">
+          <div class="input-box">
+            <input type="number" id="hours" min="0" max="23" value="0" />
+            <span>小时</span>
+          </div>
+          <div class="input-box">
+            <input type="number" id="minutes" min="0" max="59" value="0" />
+            <span>分钟</span>
+          </div>
+          <div class="input-box">
+            <input type="number" id="seconds" min="0" max="59" value="0" />
+            <span>秒</span>
+          </div>
+          <div class="input-box">
+            <input type="number" id="ms" min="1" max="999" value="100" />
+            <span>毫秒</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- 鼠标按钮与点击类型选择 -->
+      <div class="select-row">
+        <div class="config-group">
+          <label class="config-label">鼠标按键</label>
+          <select class="custom-select" id="mouse-button">
+            <option value="0">鼠标左键</option>
+            <option value="1">鼠标右键</option>
+            <option value="2">鼠标中键</option>
+          </select>
+        </div>
+        <div class="config-group">
+          <label class="config-label">点击类型</label>
+          <select class="custom-select" id="click-type">
+            <option value="0">单击</option>
+            <option value="1">双击</option>
+          </select>
+        </div>
+      </div>
+
+      <!-- 快捷键绑定设置 -->
+      <div class="config-group">
+        <label class="config-label">启动/停止 快捷键</label>
+        <div class="hotkey-container" id="hotkey-container">
+          <input type="text" class="hotkey-input" id="hotkey" value="F8" readonly />
+          <button class="hotkey-btn" id="record-btn">录制</button>
+        </div>
+      </div>
+
+      <!-- 开启控制按钮 -->
+      <button class="action-btn" id="action-btn">
+        <span id="btn-text">启动连点 (F8)</span>
+      </button>
+
+      <!-- 底部提示 -->
+      <div class="footer">
+        按下快捷键 <span id="footer-hotkey">F8</span> 即可在全局快速开关连点
+      </div>
+    </div>
+  </body>
+</html>
+
