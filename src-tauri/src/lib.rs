@@ -19,7 +19,7 @@ pub struct ClickerState {
 fn send_click(button: u8, is_down: bool) {
     unsafe {
         let mut input: INPUT = std::mem::zeroed();
-        input.type_ = INPUT_MOUSE;
+        input.r#type = INPUT_MOUSE;
         
         let flag = match (button, is_down) {
             (0, true) => MOUSEEVENTF_LEFTDOWN,
@@ -93,11 +93,11 @@ fn register_hotkey(app: AppHandle, state: State<'_, ClickerState>, hotkey: Strin
     
     // 获取锁，并注销旧的快捷键
     let mut current = state.current_hotkey.lock().unwrap();
-    let _ = shortcut_manager.unregister(&current);
+    let _ = shortcut_manager.unregister(current.as_str());
 
     // 注册新快捷键
     shortcut_manager
-        .register(&hotkey)
+        .register(hotkey.as_str())
         .map_err(|e| format!("快捷键注册失败: {}", e))?;
 
     // 保存新快捷键
@@ -154,7 +154,7 @@ pub fn run() {
         .manage(state)
         .plugin(tauri_plugin_opener::init())
         .plugin(
-            tauri_plugin_global_shortcut::Builder::with_handler(|app, _shortcut, event| {
+            tauri_plugin_global_shortcut::Builder::with_handler(|app: &tauri::AppHandle, _shortcut: &tauri_plugin_global_shortcut::Shortcut, event: &tauri_plugin_global_shortcut::GlobalShortcutEvent| {
                 if event.state() == tauri_plugin_global_shortcut::ShortcutState::Pressed {
                     // 快捷键触发，切换状态
                     let clicker = app.state::<ClickerState>();
